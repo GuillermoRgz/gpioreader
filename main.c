@@ -20,7 +20,7 @@
 // ###  END INCLUDE  ##################
 
 // ###  DEFINE  #######################
-#define GPIO_CHIP 	"/dev/gpiochip0"
+#define GPIO_CHIP 	"gpiochip0"
 #define INPUT_PIN	17
 #define OUTPUT_PIN	18
 
@@ -72,36 +72,39 @@ int main(int argc, char *argv[]) {
 
 
     // MAIN LOOP ----------------------------------------------
-    while(1){
+    while (1) {
+        // Wait for an event with a timeout (e.g., 5 seconds)
+        struct timespec timeout = {5, 0}; // 5 seconds
+        int ret = gpiod_line_event_wait(input_line, &timeout);
 
-    	ret = gpiod_line_event_wait(input_line, NULL);
+        if (ret < 0) {
+            perror("Error waiting for GPIO event");
+            break; // Exit the loop on error
+        } else if (ret == 0) {
+            printf("Timeout waiting for GPIO event\n");
+            continue; // Timeout occurred; no event detected
+        }
 
-    	if (ret < 0){
-    		perror("Error waiting for event.");
-    		return 1;
-    	}
+        // Read the event
+        struct gpiod_line_event event;
+        ret = gpiod_line_event_read(input_line, &event);
+        if (ret < 0) {
+            perror("Error reading GPIO event");
+            break; // Exit the loop on error
+        }
 
-    	// Timeout return
-    	if (ret == 0){
-    		continue;
-    	}
-
-    	ret = gpiod_line_event_read(input_line, &event);
-
-    	if (ret < 0){
-    		perror("Error reading event.");
-    		return 1;
-       	}
-
-    	// Rising event
-    	if (event.event_type == GPIOD_LINE_EVENT_RISING_EDGE){
-    		printf("Rising edge detected on GPIO %d\n", INPUT_PIN);
-    		gpiod_line_set_value(output_line, 1);
-    	}else if(event.event_type == GPIOD_LINE_EVENT_FALLING_EDGE){
-    		printf("Falling edge detected on GPIO %d\n", INPUT_PIN);
-    		gpiod_line_set_value(output_line, 0);
-    	}
+        // Handle the event
+        if (event.event_type == GPIOD_LINE_EVENT_RISING_EDGE) {
+            printf("Rising edge detected\n");
+            gpiod_line_set_value(output_line, 1); // Set output to HIGH
+        } else if (event.event_type == GPIOD_LINE_EVENT_FALLING_EDGE) {
+            printf("Falling edge detected\n");
+            gpiod_line_set_value(output_line, 0); // Set output to LOW
+        } else {
+            printf("Unknown event type\n");
+        }
     }
+
 
     // END MAIN LOOP ------------------------------------------
 
@@ -117,8 +120,8 @@ int main(int argc, char *argv[]) {
 void handle_sigint(int sig) {
     printf("\nCleaning up and exiting...\n");
     printf("Stopping NOW!!\n");
-    if (input_line) gpiod_line_release(input_line);
     if (output_line) gpiod_line_release(output_line);
+    if (input_line) gpiod_line_release(input_line);
     if (chip) gpiod_chip_close(chip);
     exit(0);
 }
